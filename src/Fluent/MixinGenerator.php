@@ -1,0 +1,230 @@
+<?php
+
+/*
+ * SPDX-License-Identifier: ISC
+ * SPDX-FileCopyrightText: (c) Respect Project Contributors
+ * SPDX-FileContributor: Henrique Moody <henriquemoody@gmail.com>
+ */
+
+declare(strict_types=1);
+
+namespace Respect\FluentGen\Fluent;
+
+use Nette\PhpGenerator\PhpNamespace;
+use ReflectionClass;
+use ReflectionParameter;
+use Respect\Fluent\Attributes\Composable;
+use Respect\FluentGen\CodeGenerator;
+use Respect\FluentGen\Config;
+use Respect\FluentGen\FileRenderer;
+use Respect\FluentGen\NamespaceScanner;
+
+use function in_array;
+use function ksort;
+
+/**
+ * @phpstan-type PrefixInfo array{
+ *     name: string,
+ *     prefix: string,
+ *     optIn: bool,
+ *     prefixParameter: ReflectionParameter|null,
+ * }
+ */
+final readonly class MixinGenerator implements CodeGenerator
+{
+    /** @param array<InterfaceConfig> $interfaces */
+    public function __construct(
+        private Config $config,
+        private NamespaceScanner $scanner,
+        private MethodBuilder $methodBuilder = new MethodBuilder(),
+        private array $interfaces = [],
+        private FileRenderer $renderer = new FileRenderer(),
+    ) {
+    }
+
+    /** @return array<string, string> filename => content */
+    public function generate(): array
+    {
+        $nodes = $this->scanner->scan(
+            $this->config->sourceDir,
+            $this->config->sourceNamespace,
+        );
+        [$prefixes, $filters] = $this->discoverPrefixesAndFilters($nodes);
+
+        $files = [];
+
+        foreach ($this->interfaces as $interfaceConfig) {
+            $prefixInterfaceNames = [];
+
+            foreach ($prefixes as $prefix) {
+                $interfaceName = $prefix['name'] . $interfaceConfig->suffix;
+                $prefixInterfaceNames[] = $this->config->outputNamespace . '\\' . $interfaceName;
+
+                $this->generateInterface(
+                    $interfaceName,
+                    $interfaceConfig,
+                    $nodes,
+                    $filters,
+                    $prefix,
+                    $files,
+                );
+            }
+
+            $this->generateRootInterface(
+                $interfaceConfig,
+                $prefixInterfaceNames,
+                $nodes,
+                $filters,
+                $files,
+            );
+        }
+
+        return $files;
+    }
+
+    /**
+     * @param array<string, ReflectionClass<object>> $nodes
+     *
+     * @return array{array<string, PrefixInfo>, array<string, Composable>}
+     */
+    private function discoverPrefixesAndFilters(array $nodes): array
+    {
+        $prefixes = [];
+        $filters = [];
+
+        foreach ($nodes as $name => $reflection) {
+            $attributes = $reflection->getAttributes(Composable::class);
+            if ($attributes === []) {
+                continue;
+            }
+
+            $attr = $attributes[0]->newInstance();
+            $filters[$name] = $attr;
+
+            if ($attr->prefix === '') {
+                continue;
+            }
+
+            $constructor = $reflection->getConstructor();
+            $prefixParameter = null;
+
+            if ($attr->prefixParameter && $constructor !== null) {
+                $parameters = $constructor->getParameters();
+                if ($parameters !== []) {
+                    $prefixParameter = $parameters[0];
+                }
+            }
+
+            $prefixes[$attr->prefix] = [
+                'name' => $reflection->getShortName(),
+                'prefix' => $attr->prefix,
+                'optIn' => $attr->optIn,
+                'prefixParameter' => $prefixParameter,
+            ];
+        }
+
+        ksort($prefixes);
+
+        return [$prefixes, $filters];
+    }
+
+    /**
+     * @param array<string, ReflectionClass<object>> $nodes
+     * @param array<string, Composable> $filters
+     * @param PrefixInfo $prefix
+     * @param array<string, string> $files
+     */
+    private function generateInterface(
+        string $interfaceName,
+        InterfaceConfig $config,
+        array $nodes,
+        array $filters,
+        array $prefix,
+        array &$files,
+    ): void {
+        $namespace = new PhpNamespace($this->config->outputNamespace);
+        $interface = $namespace->addInterface($interfaceName);
+
+        foreach ($nodes as $name => $reflection) {
+            $filter = $filters[$name] ?? null;
+
+            if ($prefix['optIn']) {
+                if ($filter === null || !in_array($prefix['prefix'], $filter->with, true)) {
+                    continue;
+                }
+            } elseif ($filter !== null && in_array($prefix['prefix'], $filter->without, true)) {
+                continue;
+            }
+
+            $method = $this->methodBuilder->build(
+                $namespace,
+                $reflection,
+                $config->returnType,
+                $prefix['prefix'],
+                $config->static,
+                $prefix['prefixParameter'],
+            );
+
+            $interface->addMember($method);
+        }
+
+        $this->addFile($interfaceName, $namespace, $files);
+    }
+
+    /**
+     * @param array<string> $prefixInterfaceNames
+     * @param array<string, ReflectionClass<object>> $nodes
+     * @param array<string, Composable> $filters
+     * @param array<string, string> $files
+     */
+    private function generateRootInterface(
+        InterfaceConfig $config,
+        array $prefixInterfaceNames,
+        array $nodes,
+        array $filters,
+        array &$files,
+    ): void {
+        $interfaceName = $config->suffix;
+        $namespace = new PhpNamespace($this->config->outputNamespace);
+        $interface = $namespace->addInterface($interfaceName);
+
+        foreach ($config->rootExtends as $extend) {
+            $namespace->addUse($extend);
+            $interface->addExtend($extend);
+        }
+
+        foreach ($prefixInterfaceNames as $prefixInterfaceName) {
+            $namespace->addUse($prefixInterfaceName);
+            $interface->addExtend($prefixInterfaceName);
+        }
+
+        if ($config->rootComment !== null) {
+            $interface->addComment($config->rootComment);
+        }
+
+        foreach ($config->rootUses as $use) {
+            $namespace->addUse($use);
+        }
+
+        foreach ($nodes as $reflection) {
+            $method = $this->methodBuilder->build(
+                $namespace,
+                $reflection,
+                $config->returnType,
+                null,
+                $config->static,
+            );
+
+            $interface->addMember($method);
+        }
+
+        $this->addFile($interfaceName, $namespace, $files);
+    }
+
+    /** @param array<string, string> $files */
+    private function addFile(string $interfaceName, PhpNamespace $namespace, array &$files): void
+    {
+        $filename = $this->config->outputDir . '/' . $interfaceName . '.php';
+        $files[$filename] = $this->renderer->render($namespace, $filename);
+    }
+}
