@@ -24,7 +24,7 @@ final readonly class OutputFormatter
     public function format(string $content, string $existingContent): string
     {
         preg_match('/^<\?php\s*\/\*[\s\S]*?\*\//', $existingContent, $matches);
-        $existingHeader = $matches[0] ?? '';
+        $existingHeader = $matches[0] ?? '<?php';
 
         $replacements = [
             '/\n\n\t(public|private|\/\*\*)/m' => PHP_EOL . '    $1',
