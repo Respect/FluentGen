@@ -44,6 +44,15 @@ final readonly class MethodBuilder
     ) {
     }
 
+    public function classToPrefix(string $shortName): string
+    {
+        if ($this->classSuffix !== '' && str_ends_with($shortName, $this->classSuffix)) {
+            $shortName = substr($shortName, 0, -strlen($this->classSuffix));
+        }
+
+        return lcfirst($shortName);
+    }
+
     /** @param ReflectionClass<object> $nodeReflection */
     public function build(
         PhpNamespace $namespace,

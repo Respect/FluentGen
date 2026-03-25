@@ -20,7 +20,7 @@
         "phpstan/phpstan-strict-rules": "^2.0",
         "phpunit/phpunit": "^12.5",
         "respect/coding-standard": "^5.0",
-        "respect/fluent": "^1.0"
+        "respect/fluent": "^2.0"
     },
     "suggest": {
         "respect/fluent": "Enables #[Composable] prefix composition support"
