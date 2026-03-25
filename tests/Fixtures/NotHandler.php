@@ -11,7 +11,7 @@ namespace Respect\FluentGen\Test\Fixtures;
 
 use Respect\Fluent\Attributes\Composable;
 
-#[Composable('not')]
+#[Composable(self::class)]
 final class NotHandler implements Handler
 {
     public function __construct(

@@ -10,9 +10,11 @@ declare(strict_types=1);
 
 namespace Respect\FluentGen\Fluent;
 
+use InvalidArgumentException;
 use Nette\PhpGenerator\PhpNamespace;
 use ReflectionClass;
 use Respect\Fluent\Attributes\Composable;
+use Respect\Fluent\Attributes\ComposableParameter;
 use Respect\FluentGen\CodeGenerator;
 use Respect\FluentGen\Config;
 use Respect\FluentGen\FileRenderer;
@@ -22,7 +24,7 @@ use function array_diff;
 use function array_keys;
 use function ctype_upper;
 use function ksort;
-use function lcfirst;
+use function sprintf;
 use function str_starts_with;
 use function strlen;
 use function uksort;
@@ -33,6 +35,7 @@ final readonly class PrefixConstantsGenerator implements CodeGenerator
         private Config $config,
         private NamespaceScanner $scanner,
         private string $outputClassName,
+        private MethodBuilder $methodBuilder = new MethodBuilder(),
         private FileRenderer $renderer = new FileRenderer(),
     ) {
     }
@@ -45,9 +48,10 @@ final readonly class PrefixConstantsGenerator implements CodeGenerator
             $this->config->sourceNamespace,
         );
         $prefixes = $this->discoverPrefixes($nodes);
+        $fqcnToPrefixMap = $this->buildFqcnMap($nodes);
         $composable = $this->buildComposable($nodes, $prefixes);
         $composableWithArgument = $this->buildComposableWithArgument($prefixes);
-        $forbidden = $this->buildForbidden($nodes, $prefixes);
+        $forbidden = $this->buildForbidden($nodes, $prefixes, $fqcnToPrefixMap);
 
         $namespace = new PhpNamespace($this->config->outputNamespace);
         $class = $namespace->addClass($this->outputClassName);
@@ -78,13 +82,25 @@ final readonly class PrefixConstantsGenerator implements CodeGenerator
             }
 
             $attr = $attributes[0]->newInstance();
-            if ($attr->prefix === '') {
+            if ($attr->prefix === null) {
                 continue;
             }
 
-            $prefixes[$attr->prefix] = [
-                'prefix' => $attr->prefix,
-                'prefixParameter' => $attr->prefixParameter,
+            $hasPrefixParameter = false;
+            $constructor = $reflection->getConstructor();
+            if ($constructor !== null) {
+                foreach ($constructor->getParameters() as $param) {
+                    if ($param->getAttributes(ComposableParameter::class) !== []) {
+                        $hasPrefixParameter = true;
+                        break;
+                    }
+                }
+            }
+
+            $prefix = $this->methodBuilder->classToPrefix($reflection->getShortName());
+            $prefixes[$prefix] = [
+                'prefix' => $prefix,
+                'prefixParameter' => $hasPrefixParameter,
             ];
         }
 
@@ -107,7 +123,7 @@ final readonly class PrefixConstantsGenerator implements CodeGenerator
             $composable[$prefix] = true;
 
             foreach (array_keys($nodes) as $name) {
-                $lcName = lcfirst($name);
+                $lcName = $this->methodBuilder->classToPrefix($name);
                 if ($lcName === $prefix) {
                     continue;
                 }
@@ -131,11 +147,28 @@ final readonly class PrefixConstantsGenerator implements CodeGenerator
 
     /**
      * @param array<string, ReflectionClass<object>> $nodes
+     *
+     * @return array<class-string, string>
+     */
+    private function buildFqcnMap(array $nodes): array
+    {
+        $map = [];
+
+        foreach ($nodes as $reflection) {
+            $map[$reflection->getName()] = $this->methodBuilder->classToPrefix($reflection->getShortName());
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param array<string, ReflectionClass<object>> $nodes
      * @param array<string, array{prefix: string, prefixParameter: bool}> $prefixes
+     * @param array<class-string, string> $fqcnToPrefixMap
      *
      * @return array<string, array<string, true>>
      */
-    private function buildForbidden(array $nodes, array $prefixes): array
+    private function buildForbidden(array $nodes, array $prefixes, array $fqcnToPrefixMap): array
     {
         $forbidden = [];
         $prefixNames = array_keys($prefixes);
@@ -148,7 +181,9 @@ final readonly class PrefixConstantsGenerator implements CodeGenerator
 
             $attr = $attributes[0]->newInstance();
 
-            $blockedPrefixes = $attr->optIn ? array_diff($prefixNames, $attr->with) : $attr->without;
+            $resolvedWith = $this->resolveClassStrings($attr->with, $fqcnToPrefixMap, $name);
+            $resolvedWithout = $this->resolveClassStrings($attr->without, $fqcnToPrefixMap, $name);
+            $blockedPrefixes = $attr->optIn ? array_diff($prefixNames, $resolvedWith) : $resolvedWithout;
 
             if ($blockedPrefixes === []) {
                 continue;
@@ -188,5 +223,28 @@ final readonly class PrefixConstantsGenerator implements CodeGenerator
         ksort($composableWithArgument);
 
         return $composableWithArgument;
+    }
+
+    /**
+     * @param list<class-string> $classStrings
+     * @param array<class-string, string> $fqcnToPrefixMap
+     *
+     * @return list<string>
+     */
+    private function resolveClassStrings(array $classStrings, array $fqcnToPrefixMap, string $context): array
+    {
+        $resolved = [];
+
+        foreach ($classStrings as $fqcn) {
+            if (!isset($fqcnToPrefixMap[$fqcn])) {
+                throw new InvalidArgumentException(
+                    sprintf('Composable on %s references unknown class %s', $context, $fqcn),
+                );
+            }
+
+            $resolved[] = $fqcnToPrefixMap[$fqcn];
+        }
+
+        return $resolved;
     }
 }

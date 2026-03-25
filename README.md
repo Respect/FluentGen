@@ -135,7 +135,7 @@ composer require respect/fluent
 ```
 
 The `MixinGenerator` discovers composable prefixes and generates per-prefix
-interfaces. For example, a `Not` class with `#[Composable('not')]` produces a
+interfaces. For example, a `Not` class with `#[Composable(self::class)]` produces a
 `NotBuilder` interface containing `notEmail()`, `notString()`, etc., and a root
 `Builder` interface that extends all prefix interfaces.
 

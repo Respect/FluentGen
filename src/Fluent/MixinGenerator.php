@@ -14,6 +14,7 @@ use Nette\PhpGenerator\PhpNamespace;
 use ReflectionClass;
 use ReflectionParameter;
 use Respect\Fluent\Attributes\Composable;
+use Respect\Fluent\Attributes\ComposableParameter;
 use Respect\FluentGen\CodeGenerator;
 use Respect\FluentGen\Config;
 use Respect\FluentGen\FileRenderer;
@@ -27,6 +28,7 @@ use function ksort;
  *     name: string,
  *     prefix: string,
  *     optIn: bool,
+ *     fqcn: class-string,
  *     prefixParameter: ReflectionParameter|null,
  * }
  */
@@ -101,24 +103,28 @@ final readonly class MixinGenerator implements CodeGenerator
             $attr = $attributes[0]->newInstance();
             $filters[$name] = $attr;
 
-            if ($attr->prefix === '') {
+            if ($attr->prefix === null) {
                 continue;
             }
 
             $constructor = $reflection->getConstructor();
             $prefixParameter = null;
 
-            if ($attr->prefixParameter && $constructor !== null) {
-                $parameters = $constructor->getParameters();
-                if ($parameters !== []) {
-                    $prefixParameter = $parameters[0];
+            if ($constructor !== null) {
+                foreach ($constructor->getParameters() as $param) {
+                    if ($param->getAttributes(ComposableParameter::class) !== []) {
+                        $prefixParameter = $param;
+                        break;
+                    }
                 }
             }
 
-            $prefixes[$attr->prefix] = [
+            $prefix = $this->methodBuilder->classToPrefix($reflection->getShortName());
+            $prefixes[$prefix] = [
                 'name' => $reflection->getShortName(),
-                'prefix' => $attr->prefix,
+                'prefix' => $prefix,
                 'optIn' => $attr->optIn,
+                'fqcn' => $reflection->getName(),
                 'prefixParameter' => $prefixParameter,
             ];
         }
@@ -149,10 +155,10 @@ final readonly class MixinGenerator implements CodeGenerator
             $filter = $filters[$name] ?? null;
 
             if ($prefix['optIn']) {
-                if ($filter === null || !in_array($prefix['prefix'], $filter->with, true)) {
+                if ($filter === null || !in_array($prefix['fqcn'], $filter->with, true)) {
                     continue;
                 }
-            } elseif ($filter !== null && in_array($prefix['prefix'], $filter->without, true)) {
+            } elseif ($filter !== null && in_array($prefix['fqcn'], $filter->without, true)) {
                 continue;
             }
 
