@@ -53,7 +53,10 @@ final readonly class MethodBuilder
         return lcfirst($shortName);
     }
 
-    /** @param ReflectionClass<object> $nodeReflection */
+    /**
+     * @param ReflectionClass<object> $nodeReflection
+     * @param ReflectionClass<object>|null $prefixReflection composing prefix class, for narrowing
+     */
     public function build(
         PhpNamespace $namespace,
         ReflectionClass $nodeReflection,
@@ -61,6 +64,8 @@ final readonly class MethodBuilder
         string|null $prefix = null,
         bool $static = false,
         ReflectionParameter|null $prefixParameter = null,
+        AssuranceTypeMapper|null $narrowing = null,
+        ReflectionClass|null $prefixReflection = null,
     ): Method {
         $originalName = $nodeReflection->getShortName();
         if ($this->classSuffix !== '' && str_ends_with($originalName, $this->classSuffix)) {
@@ -80,21 +85,28 @@ final readonly class MethodBuilder
             $this->addPrefixParameter($method, $prefixParameter);
         }
 
-        $constructor = $nodeReflection->getConstructor();
-        if ($constructor === null) {
-            return $method;
-        }
+        $narrowingDoc = $narrowing?->for($nodeReflection, $static, $prefixReflection);
+        $suppressConstructorDoc = $narrowingDoc !== null && $narrowingDoc->suppressConstructorDoc;
 
-        $comment = $constructor->getDocComment();
-        if ($comment !== false) {
-            $cleaned = preg_replace('@(/\*\* *| +\* +| +\*/)@', '', $comment);
-            if ($cleaned !== null) {
-                $method->addComment($cleaned);
+        $constructor = $nodeReflection->getConstructor();
+        if ($constructor !== null) {
+            $comment = $constructor->getDocComment();
+            if ($comment !== false && !$suppressConstructorDoc) {
+                $cleaned = preg_replace('@(/\*\* *| +\* +| +\*/)@', '', $comment);
+                if ($cleaned !== null) {
+                    $method->addComment($cleaned);
+                }
+            }
+
+            foreach ($constructor->getParameters() as $reflectionParameter) {
+                $this->addParameter($method, $reflectionParameter, $namespace);
             }
         }
 
-        foreach ($constructor->getParameters() as $reflectionParameter) {
-            $this->addParameter($method, $reflectionParameter, $namespace);
+        if ($narrowingDoc !== null) {
+            foreach ($narrowingDoc->comments as $line) {
+                $method->addComment($line);
+            }
         }
 
         return $method;

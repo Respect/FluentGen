@@ -15,6 +15,7 @@ final readonly class InterfaceConfig
     /**
      * @param array<string> $rootExtends
      * @param array<string> $rootUses
+     * @param array<TerminalMethod> $terminalMethods methods injected verbatim into the root interface
      */
     public function __construct(
         public string $suffix,
@@ -23,6 +24,10 @@ final readonly class InterfaceConfig
         public array $rootExtends = [],
         public string|null $rootComment = null,
         public array $rootUses = [],
+        public bool $emitNarrowing = false,
+        public string $chainType = 'Chain',
+        public string|null $templateParam = null,
+        public array $terminalMethods = [],
     ) {
     }
 }
