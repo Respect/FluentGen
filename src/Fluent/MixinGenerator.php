@@ -10,6 +10,7 @@ declare(strict_types=1);
 
 namespace Respect\FluentGen\Fluent;
 
+use Nette\PhpGenerator\Method;
 use Nette\PhpGenerator\PhpNamespace;
 use ReflectionClass;
 use ReflectionParameter;
@@ -30,6 +31,7 @@ use function ksort;
  *     optIn: bool,
  *     fqcn: class-string,
  *     prefixParameter: ReflectionParameter|null,
+ *     reflection: ReflectionClass<object>,
  * }
  */
 final readonly class MixinGenerator implements CodeGenerator
@@ -126,6 +128,7 @@ final readonly class MixinGenerator implements CodeGenerator
                 'optIn' => $attr->optIn,
                 'fqcn' => $reflection->getName(),
                 'prefixParameter' => $prefixParameter,
+                'reflection' => $reflection,
             ];
         }
 
@@ -169,12 +172,23 @@ final readonly class MixinGenerator implements CodeGenerator
                 $prefix['prefix'],
                 $config->static,
                 $prefix['prefixParameter'],
+                $this->mapperFor($config),
+                $prefix['reflection'],
             );
 
             $interface->addMember($method);
         }
 
         $this->addFile($interfaceName, $namespace, $files);
+    }
+
+    private function mapperFor(InterfaceConfig $config): AssuranceTypeMapper|null
+    {
+        if (!$config->emitNarrowing) {
+            return null;
+        }
+
+        return new AssuranceTypeMapper($config->chainType, $config->templateParam ?? 'TSure');
     }
 
     /**
@@ -204,6 +218,10 @@ final readonly class MixinGenerator implements CodeGenerator
             $interface->addExtend($prefixInterfaceName);
         }
 
+        if ($config->templateParam !== null) {
+            $interface->addComment('@template-covariant ' . $config->templateParam);
+        }
+
         if ($config->rootComment !== null) {
             $interface->addComment($config->rootComment);
         }
@@ -219,12 +237,38 @@ final readonly class MixinGenerator implements CodeGenerator
                 $config->returnType,
                 null,
                 $config->static,
+                null,
+                $this->mapperFor($config),
             );
 
             $interface->addMember($method);
         }
 
+        foreach ($config->terminalMethods as $terminal) {
+            $interface->addMember($this->buildTerminalMethod($terminal));
+        }
+
         $this->addFile($interfaceName, $namespace, $files);
+    }
+
+    private function buildTerminalMethod(TerminalMethod $terminal): Method
+    {
+        $method = new Method($terminal->name);
+        $method->setPublic()->setReturnType($terminal->returnType);
+
+        foreach ($terminal->parameters as $parameterName => $parameterType) {
+            $method->addParameter($parameterName)->setType($parameterType);
+        }
+
+        foreach ($terminal->optionalParameters as $parameterName => $parameterType) {
+            $method->addParameter($parameterName, null)->setType($parameterType);
+        }
+
+        foreach ($terminal->comments as $line) {
+            $method->addComment($line);
+        }
+
+        return $method;
     }
 
     /** @param array<string, string> $files */
