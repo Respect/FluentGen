@@ -1259,16 +1259,16 @@
         },
         {
             "name": "respect/fluent",
-            "version": "2.0.0",
+            "version": "2.0.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/Respect/Fluent.git",
-                "reference": "21e9936c4ae753691e895bd4b68ab3380f482141"
+                "reference": "f32c76e37a82a9e63d6fe700a27201534f72da60"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Respect/Fluent/zipball/21e9936c4ae753691e895bd4b68ab3380f482141",
-                "reference": "21e9936c4ae753691e895bd4b68ab3380f482141",
+                "url": "https://api.github.com/repos/Respect/Fluent/zipball/f32c76e37a82a9e63d6fe700a27201534f72da60",
+                "reference": "f32c76e37a82a9e63d6fe700a27201534f72da60",
                 "shasum": ""
             },
             "require": {
@@ -1306,9 +1306,9 @@
             ],
             "support": {
                 "issues": "https://github.com/Respect/Fluent/issues",
-                "source": "https://github.com/Respect/Fluent/tree/2.0.0"
+                "source": "https://github.com/Respect/Fluent/tree/2.0.1"
             },
-            "time": "2026-03-25T05:08:46+00:00"
+            "time": "2026-03-26T04:24:51+00:00"
         },
         {
             "name": "sebastian/cli-parser",
