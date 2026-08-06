@@ -1,0 +1,11 @@
+/* export-ignore
+
+# Project files
+/README.md -export-ignore
+/composer.json -export-ignore
+/src -export-ignore
+
+# SBOM information
+/LICENSE -export-ignore
+/LICENSES -export-ignore
+/REUSE.toml -export-ignore

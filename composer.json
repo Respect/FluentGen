@@ -4,6 +4,8 @@
     "keywords": ["respect", "fluentgen", "mixin", "fluent"],
     "type": "library",
     "license": "ISC",
+    "minimum-stability": "dev",
+    "prefer-stable": true,
     "authors": [
         {
             "name": "Respect/FluentGen Contributors",
@@ -20,7 +22,7 @@
         "phpstan/phpstan-strict-rules": "^2.0",
         "phpunit/phpunit": "^12.5 || ^13.0",
         "respect/coding-standard": "^5.0",
-        "respect/fluent": "^2.0"
+        "respect/fluent": "3.0.x-dev"
     },
     "suggest": {
         "respect/fluent": "Enables #[Composable] prefix composition support"
@@ -49,6 +51,11 @@
         "sort-packages": true,
         "allow-plugins": {
             "dealerdirect/phpcodesniffer-composer-installer": true
+        }
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-ide-narrowing": "2.1.x-dev"
         }
     }
 }
